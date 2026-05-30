@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.secret
+id.json
+*-keypair.json
+**/*keypair*.json
+
+# Solana / Anchor build output and local validator state
+target/
+.anchor/
+test-ledger/
+ledger/
+*.so
+*.d
+*.rlib
+
+# Next.js / frontend build output
+.next/
+out/
+.vercel/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# TypeScript package output
+dist/
+coverage/
+
+# Local browser/test artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+*.trace.zip
+
+# Runtime uploads/cache
+uploads/
+public/uploads/
+tmp/
+temp/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

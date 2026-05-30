@@ -1,0 +1,32 @@
+{
+  "name": "fair-pump-launchpad",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @fair/web dev",
+    "db:schema": "psql \"$DATABASE_URL\" -f infra/postgres/001_init.sql",
+    "keeper:dev": "pnpm --filter @fair/keeper dev",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "anchor:build": "anchor build --no-idl",
+    "anchor:test": "anchor test --skip-local-validator",
+    "local:smoke": "tsx tests/local-smoke.ts",
+    "mainnet:smoke": "tsx tests/mainnet-live-smoke.ts"
+  },
+  "devDependencies": {
+    "@fair/launchpad-client": "workspace:*",
+    "@fair/shared": "workspace:*",
+    "@solana/web3.js": "^1.98.4",
+    "@types/node": "^22.15.29",
+    "@types/pg": "^8.20.0",
+    "bn.js": "^5.2.2",
+    "pg": "^8.21.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  },
+  "packageManager": "pnpm@8.7.1"
+}
