@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { Keypair } from "@solana/web3.js";
+import { CREATOR_FEE_MODES, type CreatorFeeMode } from "@fair/shared";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db";
 import { readOnchainContributorStateWithRetry } from "@/lib/onchain-contributor";
+import { encryptText } from "@/lib/server-secret-crypto";
 
 export const runtime = "nodejs";
 
@@ -24,6 +27,7 @@ type RegisterLaunchBody = {
   devbuyLamports?: string;
   devbuyWeight?: string;
   maxWalletSupplyBps?: number;
+  creatorFeeMode?: CreatorFeeMode;
   startAt?: string;
   endAt?: string;
 };
@@ -56,6 +60,41 @@ export async function POST(request: Request) {
 
   const devbuyLamports = body.devbuyLamports ?? "0";
   const maxWalletSupplyBps = normalizeMaxWalletSupplyBps(body.maxWalletSupplyBps);
+  const creatorFeeMode = normalizeCreatorFeeMode(body.creatorFeeMode);
+  const existingLaunch = await dbQuery<{
+    creator_fee_mode: CreatorFeeMode;
+    creator_fee_recipient: string | null;
+    creator_fee_subwallet_public_key: string | null;
+  }>(
+    `
+      select
+        creator_fee_mode,
+        creator_fee_recipient,
+        creator_fee_subwallet_public_key
+      from launches
+      where presale_address = $1
+      limit 1
+    `,
+    [body.presaleAddress]
+  );
+  const existingCreatorFee = existingLaunch.rows[0];
+  if (existingCreatorFee && existingCreatorFee.creator_fee_mode !== creatorFeeMode) {
+    return NextResponse.json({ error: "Creator fee mode is immutable once a presale is registered." }, { status: 409 });
+  }
+  if (!existingCreatorFee && creatorFeeMode !== "self" && !process.env.WALLET_ENCRYPTION_KEY) {
+    return NextResponse.json({ error: "WALLET_ENCRYPTION_KEY is required for non-self creator fee modes." }, { status: 500 });
+  }
+
+  const generatedFeeWallet = !existingCreatorFee && creatorFeeMode !== "self"
+    ? createEncryptedCreatorFeeWallet(creatorFeeMode)
+    : null;
+  const creatorFeeRecipient = existingCreatorFee?.creator_fee_recipient
+    ?? generatedFeeWallet?.publicKey
+    ?? body.creator;
+  const creatorFeeSubwalletPublicKey = existingCreatorFee?.creator_fee_subwallet_public_key
+    ?? generatedFeeWallet?.publicKey
+    ?? null;
+
   await dbQuery(
     `
       insert into launches(
@@ -77,12 +116,15 @@ export async function POST(request: Request) {
         docs_url,
         target_lamports,
         max_wallet_supply_bps,
+        creator_fee_mode,
+        creator_fee_recipient,
+        creator_fee_subwallet_public_key,
         committed_lamports,
         contributors_count,
         start_at,
         end_at,
         updated_at
-      ) values ($1, $2, $3, $4, $5, $6, 'LIVE', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, now())
+      ) values ($1, $2, $3, $4, $5, $6, 'LIVE', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 1, $22, $23, now())
       on conflict (presale_address) do update set
         creator = excluded.creator,
         mint_address = excluded.mint_address,
@@ -123,11 +165,34 @@ export async function POST(request: Request) {
       links.docs,
       body.targetLamports,
       maxWalletSupplyBps,
+      creatorFeeMode,
+      creatorFeeRecipient,
+      creatorFeeSubwalletPublicKey,
       devbuyLamports,
       startAt,
       endAt
     ]
   );
+
+  if (generatedFeeWallet) {
+    await dbQuery(
+      `
+        insert into creator_fee_wallets(
+          presale_address,
+          mode,
+          public_key,
+          encrypted_secret
+        ) values ($1, $2, $3, $4)
+        on conflict (presale_address) do nothing
+      `,
+      [
+        body.presaleAddress,
+        creatorFeeMode,
+        generatedFeeWallet.publicKey,
+        generatedFeeWallet.encryptedSecret
+      ]
+    );
+  }
 
   if (Number(devbuyLamports) > 0) {
     const onchainDevbuy = await readOnchainContributorStateWithRetry(body.presaleAddress, body.creator);
@@ -179,6 +244,24 @@ export async function POST(request: Request) {
 function normalizeMaxWalletSupplyBps(value: number | undefined) {
   if (!Number.isInteger(value)) return 0;
   return Math.max(0, Math.min(10_000, value as number));
+}
+
+function normalizeCreatorFeeMode(value: CreatorFeeMode | undefined): CreatorFeeMode {
+  if (value && CREATOR_FEE_MODES.includes(value)) return value;
+  return "self";
+}
+
+function createEncryptedCreatorFeeWallet(mode: CreatorFeeMode) {
+  if (mode === "self") return null;
+  const encryptionKey = process.env.WALLET_ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    throw new Error("WALLET_ENCRYPTION_KEY is required for non-self creator fee modes.");
+  }
+  const keypair = Keypair.generate();
+  return {
+    publicKey: keypair.publicKey.toBase58(),
+    encryptedSecret: encryptText(JSON.stringify(Array.from(keypair.secretKey)), encryptionKey)
+  };
 }
 
 function isInlineAsset(value: string | undefined) {

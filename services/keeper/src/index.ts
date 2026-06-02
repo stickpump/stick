@@ -60,11 +60,13 @@ import {
   type PumpCurveState,
   type SettlementManifest
 } from "@fair/shared";
+import { runCreatorFeeWorkerOnce } from "./creatorFeeWorker.js";
 
 const DEFAULT_PROGRAM_ID = "3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL";
 const PUMP_FEE_RECIPIENT = new PublicKey("62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV");
 const PUMP_BUYBACK_FEE_RECIPIENT = new PublicKey("5YxQFdt3Tr9zJLvkFccqXVUwhdTWJQc1fFg2YPbxvxeD");
 const ROUTE_SOL_RENT_BUFFER_LAMPORTS = new BN(3_000_000);
+const CREATOR_FEE_WORKER_INTERVAL_MS = Number(process.env.CREATOR_FEE_WORKER_MS ?? 30_000);
 const {
   GLOBAL_CONFIG_PDA,
   PUMP_AMM_SDK,
@@ -98,6 +100,8 @@ type KeeperConfig = {
   keeper?: Keypair;
   autoFinalize: boolean;
 };
+
+let lastCreatorFeeWorkerRunAt = 0;
 
 export type SettlementContributor = {
   owner: string;
@@ -218,7 +222,22 @@ export async function runKeeperOnce(config = readConfig()): Promise<void> {
   for (const presale of closeable) {
     await prepareSettlementFromDatabase(connection, db, config, presale);
   }
+  await maybeRunCreatorFeeWorker(connection, db, config);
   await db.end();
+}
+
+async function maybeRunCreatorFeeWorker(connection: Connection, db: pg.Pool, config: KeeperConfig) {
+  if (!config.keeper) return;
+  const now = Date.now();
+  if (now - lastCreatorFeeWorkerRunAt < CREATOR_FEE_WORKER_INTERVAL_MS) return;
+  lastCreatorFeeWorkerRunAt = now;
+  await runCreatorFeeWorkerOnce({
+    connection,
+    db,
+    keeper: config.keeper,
+    walletEncryptionKey: process.env.WALLET_ENCRYPTION_KEY,
+    dryRun: process.env.CREATOR_FEE_WORKER_DRY_RUN === "true"
+  });
 }
 
 export async function runKeeperLoop(config = readConfig()): Promise<void> {
@@ -250,6 +269,9 @@ async function prepareSettlementFromDatabase(
     avatar_url: string | null;
     banner_url: string | null;
     max_wallet_supply_bps: number | null;
+    creator_fee_mode: string | null;
+    creator_fee_recipient: string | null;
+    creator_fee_subwallet_public_key: string | null;
   }>(
     `
       select
@@ -262,7 +284,10 @@ async function prepareSettlementFromDatabase(
         metadata_uri,
         avatar_url,
         banner_url,
-        coalesce(max_wallet_supply_bps, 0) as max_wallet_supply_bps
+        coalesce(max_wallet_supply_bps, 0) as max_wallet_supply_bps,
+        coalesce(creator_fee_mode, 'self') as creator_fee_mode,
+        creator_fee_recipient,
+        creator_fee_subwallet_public_key
       from launches
       where presale_address = $1
       limit 1
@@ -315,6 +340,29 @@ async function prepareSettlementFromDatabase(
   if (config.keeper && config.autoFinalize) {
     if (!launch.creator) {
       throw new Error(`presale ${presale.toBase58()} is missing creator; refusing to finalize without a creator fee recipient`);
+    }
+    const creatorFeeMode = launch.creator_fee_mode ?? "self";
+    const creatorFeeRecipient = launch.creator_fee_recipient ?? launch.creator;
+    if (creatorFeeMode !== "self" && (!launch.creator_fee_subwallet_public_key || !creatorFeeRecipient)) {
+      throw new Error(`presale ${presale.toBase58()} is missing creator fee subwallet; refusing non-self fee mode finalization`);
+    }
+    if (creatorFeeMode !== "self") {
+      if (creatorFeeRecipient !== launch.creator_fee_subwallet_public_key) {
+        throw new Error(`presale ${presale.toBase58()} creator fee recipient must match the configured subwallet`);
+      }
+      const feeWallet = await db.query<{ public_key: string; encrypted_secret: string | null }>(
+        `
+          select public_key, encrypted_secret
+          from creator_fee_wallets
+          where presale_address = $1
+          limit 1
+        `,
+        [presale.toBase58()]
+      );
+      const wallet = feeWallet.rows[0];
+      if (!wallet?.encrypted_secret || wallet.public_key !== launch.creator_fee_subwallet_public_key) {
+        throw new Error(`presale ${presale.toBase58()} has no encrypted creator fee subwallet; refusing non-self fee mode finalization`);
+      }
     }
     const routeQuote = await chooseRouteQuoteForWalletCap({
       target,
@@ -376,6 +424,7 @@ async function prepareSettlementFromDatabase(
         presale,
         launch: {
           creator: new PublicKey(launch.creator),
+          feeShareRecipient: new PublicKey(creatorFeeRecipient),
           mint: launch.mint_address ? new PublicKey(launch.mint_address) : mintPda(config.programId, presale),
           name: launch.name,
           symbol: launch.symbol,
@@ -469,6 +518,7 @@ type FinalizeLaunchInput = {
   presale: PublicKey;
   launch: {
     creator: PublicKey;
+    feeShareRecipient: PublicKey;
     mint: PublicKey;
     name: string;
     symbol: string;
@@ -648,7 +698,7 @@ async function finalizeLaunchRoute(input: FinalizeLaunchInput): Promise<boolean>
     mint: launch.mint,
     pumpCoinCreator,
     routeCreator: sharedFeeCreator,
-    feeShareRecipient: launch.creator,
+    feeShareRecipient: launch.feeShareRecipient,
     name: launch.name,
     symbol: launch.symbol,
     uri: launch.metadataUri,

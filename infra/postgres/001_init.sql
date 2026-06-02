@@ -36,8 +36,18 @@ alter table launches add column if not exists x_url text;
 alter table launches add column if not exists telegram_url text;
 alter table launches add column if not exists discord_url text;
 alter table launches add column if not exists docs_url text;
+alter table launches add column if not exists creator_fee_mode text not null default 'self';
+alter table launches add column if not exists creator_fee_recipient text;
+alter table launches add column if not exists creator_fee_subwallet_public_key text;
 alter table launches alter column max_wallet_supply_bps set default 0;
 update launches set max_wallet_supply_bps = 0 where max_wallet_supply_bps is null;
+update launches set creator_fee_mode = 'self' where creator_fee_mode is null;
+update launches set creator_fee_recipient = creator where creator_fee_recipient is null and coalesce(creator, '') <> '';
+
+alter table launches drop constraint if exists launches_creator_fee_mode_check;
+alter table launches add constraint launches_creator_fee_mode_check check (
+  creator_fee_mode in ('self', 'buyback_burn', 'coinflip', 'flywheel')
+);
 
 create index if not exists launches_status_updated_idx on launches (status, updated_at desc);
 
@@ -58,6 +68,40 @@ create table if not exists launched_tokens (
 
 create index if not exists launched_tokens_launched_idx on launched_tokens (launched_at desc);
 
+create table if not exists creator_fee_wallets (
+  presale_address text primary key references launches(presale_address) on delete cascade,
+  mode text not null check (mode in ('buyback_burn', 'coinflip', 'flywheel')),
+  public_key text not null unique,
+  encrypted_secret text not null,
+  funded_lamports numeric(40, 0) not null default 0,
+  funded_at timestamptz,
+  funding_signature text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists creator_fee_wallets_public_key_idx on creator_fee_wallets (public_key);
+
+create table if not exists creator_fee_cycles (
+  id bigserial primary key,
+  presale_address text not null references launches(presale_address) on delete cascade,
+  mint text,
+  mode text not null check (mode in ('buyback_burn', 'coinflip', 'flywheel')),
+  wallet_public_key text,
+  claimed_lamports numeric(40, 0) not null default 0,
+  action_lamports numeric(40, 0) not null default 0,
+  result text not null,
+  holder_count integer,
+  burned_raw_amount numeric(40, 0),
+  signatures jsonb not null default '{}'::jsonb,
+  recipients jsonb not null default '[]'::jsonb,
+  error text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists creator_fee_cycles_presale_created_idx on creator_fee_cycles (presale_address, created_at desc);
+create index if not exists creator_fee_cycles_created_idx on creator_fee_cycles (created_at desc);
+
 create table if not exists activity_events (
   id bigserial primary key,
   type text not null check (type in (
@@ -68,7 +112,11 @@ create table if not exists activity_events (
     'finalized',
     'claim',
     'refund',
-    'graduated'
+    'graduated',
+    'fee_claim',
+    'buyback_burn',
+    'coinflip',
+    'flywheel'
   )),
   presale_address text references launches(presale_address) on delete set null,
   actor text,
@@ -79,6 +127,22 @@ create table if not exists activity_events (
   slot bigint,
   created_at timestamptz not null default now()
 );
+
+alter table activity_events drop constraint if exists activity_events_type_check;
+alter table activity_events add constraint activity_events_type_check check (type in (
+  'contribution',
+  'presale_created',
+  'presale_opened',
+  'settlement_ready',
+  'finalized',
+  'claim',
+  'refund',
+  'graduated',
+  'fee_claim',
+  'buyback_burn',
+  'coinflip',
+  'flywheel'
+));
 
 create index if not exists activity_events_created_idx on activity_events (created_at desc);
 create index if not exists activity_events_presale_created_idx on activity_events (presale_address, created_at desc);

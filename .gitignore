@@ -43,6 +43,7 @@ test-results/
 # Runtime uploads/cache
 uploads/
 public/uploads/
+apps/web/.stick-assets/
 tmp/
 temp/
 *.log

@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import BN from "bn.js";
-import { estimatePumpRouteMarketCapLamports, SOL_DECIMALS } from "@fair/shared";
+import {
+  CREATOR_FEE_MODE_DESCRIPTIONS,
+  CREATOR_FEE_MODE_LABELS,
+  estimatePumpRouteMarketCapLamports,
+  SOL_DECIMALS,
+  type CreatorFeeMode
+} from "@fair/shared";
 import { CopyMintButton } from "@/components/copy-mint-button";
 import { FutardHeader } from "@/components/futard-header";
 import { LaunchAutoRefresh } from "@/components/launch-auto-refresh";
@@ -50,6 +56,10 @@ export default async function PresalePage({ params }: PresalePageProps) {
   const nextStepCopy = getNextStepCopy(status, rawStatus, progress, oversubRatio);
   const launchedMint = token?.mint ?? (status === "COMPLETED" && rawStatus === "COMPLETED" ? dbFeed.mintAddress : undefined);
   const projectLinks = buildProjectLinks(dbFeed.links);
+  const creatorFeeMode = dbFeed.creatorFee?.mode ?? "self";
+  const creatorFeeRecipient = dbFeed.creatorFee?.recipient;
+  const creatorFeeLabel = CREATOR_FEE_MODE_LABELS[creatorFeeMode];
+  const creatorFeeDescription = CREATOR_FEE_MODE_DESCRIPTIONS[creatorFeeMode];
 
   return (
     <main className="futardLanding">
@@ -118,6 +128,28 @@ export default async function PresalePage({ params }: PresalePageProps) {
                 <p>{description}</p>
               </div>
             </article>
+
+            {dbFeed.creatorFeeCycles.length > 0 && (
+              <article className="launchFeeLog">
+                <h2>Creator fee actions</h2>
+                <div className="feeCycleList">
+                  {dbFeed.creatorFeeCycles.map((cycle) => (
+                    <div key={cycle.id} className="feeCycleItem">
+                      <div>
+                        <strong>{formatFeeCycleResult(cycle.result)}</strong>
+                        <span>{toLocaleDate(cycle.createdAt)}</span>
+                      </div>
+                      <p>
+                        {cycle.claimedLamports !== "0" && <>Claimed {formatSol(solFromLamports(cycle.claimedLamports))} SOL. </>}
+                        {cycle.actionLamports !== "0" && <>Action budget {formatSol(solFromLamports(cycle.actionLamports))} SOL. </>}
+                        {cycle.holderCount ? <>Holders paid: {cycle.holderCount}. </> : null}
+                        {cycle.error ? `Error: ${cycle.error}` : null}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )}
           </div>
 
           <aside className="launchFundingPanel">
@@ -142,6 +174,7 @@ export default async function PresalePage({ params }: PresalePageProps) {
               <div><span>Progress</span><strong>{progress}%</strong></div>
               <div><span>Max wallet</span><strong>{maxWalletLabel}</strong></div>
               <div><span>Creator buy-in</span><strong>{devbuyLabel}</strong></div>
+              <div><span>Creator fees</span><strong>{creatorFeeLabel}</strong></div>
             </div>
             <PresaleActions
               presaleAddress={presaleAddress}
@@ -160,6 +193,23 @@ export default async function PresalePage({ params }: PresalePageProps) {
                 <CopyMintButton className="mintCopy launchMintCopy" mint={launchedMint} />
               </div>
             )}
+            <div className="launchCreatorFeeBlock">
+              <span>Creator fees</span>
+              <strong>{creatorFeeLabel}</strong>
+              <p>{creatorFeeDescription}</p>
+              {creatorFeeRecipient && (
+                <>
+                  <span>Fee recipient</span>
+                  <CopyMintButton className="mintCopy launchMintCopy" mint={creatorFeeRecipient} />
+                </>
+              )}
+              {dbFeed.creatorFee?.subwallet && dbFeed.creatorFee.subwallet !== creatorFeeRecipient && (
+                <>
+                  <span>Subwallet</span>
+                  <CopyMintButton className="mintCopy launchMintCopy" mint={dbFeed.creatorFee.subwallet} />
+                </>
+              )}
+            </div>
           </aside>
         </div>
 
@@ -202,6 +252,9 @@ type LaunchRow = {
   max_wallet_supply_bps: number | null;
   fdv_usd: string | null;
   mint_address: string | null;
+  creator_fee_mode: CreatorFeeMode | null;
+  creator_fee_recipient: string | null;
+  creator_fee_subwallet_public_key: string | null;
   start_at: Date | string;
   end_at: Date | string | null;
 };
@@ -219,6 +272,20 @@ type TokenRow = {
   banner_url: string | null;
 };
 
+type CreatorFeeCycleRow = {
+  id: string;
+  mode: CreatorFeeMode;
+  claimed_lamports: string;
+  action_lamports: string;
+  result: string;
+  holder_count: number | null;
+  burned_raw_amount: string | null;
+  signatures: Record<string, string | undefined> | null;
+  recipients: Array<{ owner: string; lamports: string }> | null;
+  error: string | null;
+  created_at: Date | string;
+};
+
 async function findPresaleInDb(id: string): Promise<{
   launch?: LaunchCardView;
   token?: LaunchedTokenView;
@@ -228,8 +295,26 @@ async function findPresaleInDb(id: string): Promise<{
   devbuyLamports?: string;
   mintAddress?: string;
   links?: ProjectLinks;
+  creatorFee?: {
+    mode: CreatorFeeMode;
+    recipient?: string;
+    subwallet?: string;
+  };
+  creatorFeeCycles: Array<{
+    id: string;
+    mode: CreatorFeeMode;
+    claimedLamports: string;
+    actionLamports: string;
+    result: string;
+    holderCount?: number;
+    burnedRawAmount?: string;
+    signatures: Record<string, string | undefined>;
+    recipients: Array<{ owner: string; lamports: string }>;
+    error?: string;
+    createdAt: string;
+  }>;
 }> {
-  if (!hasDatabaseUrl()) return {};
+  if (!hasDatabaseUrl()) return { creatorFeeCycles: [] };
 
   try {
     const [launchResult, tokenResult, solUsdPrice] = await Promise.all([
@@ -256,6 +341,9 @@ async function findPresaleInDb(id: string): Promise<{
             coalesce(max_wallet_supply_bps, 0) as max_wallet_supply_bps,
             fdv_usd::text,
             mint_address,
+            coalesce(creator_fee_mode, 'self') as creator_fee_mode,
+            creator_fee_recipient,
+            creator_fee_subwallet_public_key,
             start_at,
             end_at
           from launches
@@ -299,6 +387,27 @@ async function findPresaleInDb(id: string): Promise<{
       `,
       [launchRow.presale_address, launchRow.creator]
     ).catch(() => ({ rows: [] })) : { rows: [] };
+    const creatorFeeCycleResult = launchRow ? await dbQuery<CreatorFeeCycleRow>(
+      `
+        select
+          id::text,
+          mode,
+          claimed_lamports::text,
+          action_lamports::text,
+          result,
+          holder_count,
+          burned_raw_amount::text,
+          signatures,
+          recipients,
+          error,
+          created_at
+        from creator_fee_cycles
+        where presale_address = $1
+        order by created_at desc
+        limit 12
+      `,
+      [launchRow.presale_address]
+    ).catch(() => ({ rows: [] })) : { rows: [] };
 
     return {
       launch: launchRow ? formatDbLaunch(launchRow, solUsdPrice) : undefined,
@@ -308,6 +417,24 @@ async function findPresaleInDb(id: string): Promise<{
       raisedLamports: tokenResult.rows[0]?.raised_lamports,
       devbuyLamports: devbuyResult.rows[0]?.committed_lamports,
       mintAddress: tokenResult.rows[0]?.mint ?? launchRow?.mint_address ?? undefined,
+      creatorFee: launchRow ? {
+        mode: launchRow.creator_fee_mode ?? "self",
+        recipient: launchRow.creator_fee_recipient ?? launchRow.creator,
+        subwallet: launchRow.creator_fee_subwallet_public_key ?? undefined
+      } : undefined,
+      creatorFeeCycles: creatorFeeCycleResult.rows.map((row) => ({
+        id: row.id,
+        mode: row.mode,
+        claimedLamports: row.claimed_lamports,
+        actionLamports: row.action_lamports,
+        result: row.result,
+        holderCount: row.holder_count ?? undefined,
+        burnedRawAmount: row.burned_raw_amount ?? undefined,
+        signatures: row.signatures ?? {},
+        recipients: row.recipients ?? [],
+        error: row.error ?? undefined,
+        createdAt: toIso(row.created_at)
+      })),
       links: launchRow ? {
         website: launchRow.website_url ?? undefined,
         x: launchRow.x_url ?? undefined,
@@ -317,7 +444,7 @@ async function findPresaleInDb(id: string): Promise<{
       } : undefined
     };
   } catch {
-    return {};
+    return { creatorFeeCycles: [] };
   }
 }
 
@@ -438,6 +565,23 @@ function formatUsd(value: number) {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
   if (value >= 10_000) return `$${(value / 1_000).toFixed(1)}K`;
   return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
+function formatFeeCycleResult(result: string) {
+  return result
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function toLocaleDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric"
+  }).format(new Date(value));
 }
 
 function toIso(value: Date | string) {

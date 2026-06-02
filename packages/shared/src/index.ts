@@ -27,6 +27,8 @@ export type VestingPreset = "Instant" | "Linear7Days" | "Linear30Days";
 
 export type BoostPreset = "Low" | "Medium" | "High";
 
+export type CreatorFeeMode = "self" | "buyback_burn" | "coinflip" | "flywheel";
+
 export type PresaleStatus =
   | "Draft"
   | "Open"
@@ -95,6 +97,27 @@ export type ProjectMetadata = {
     buybackBps: number;
     liquidityBps: number;
   };
+};
+
+export const CREATOR_FEE_MODES: readonly CreatorFeeMode[] = [
+  "self",
+  "buyback_burn",
+  "coinflip",
+  "flywheel"
+] as const;
+
+export const CREATOR_FEE_MODE_LABELS: Record<CreatorFeeMode, string> = {
+  self: "Self",
+  buyback_burn: "Buyback + Burn",
+  coinflip: "Coinflip",
+  flywheel: "Flywheel"
+};
+
+export const CREATOR_FEE_MODE_DESCRIPTIONS: Record<CreatorFeeMode, string> = {
+  self: "Creator fees route directly to the launch creator wallet.",
+  buyback_burn: "Creator fees route to a subwallet that claims, buys the token, and burns the bought tokens.",
+  coinflip: "Creator fees route to a subwallet that flips through Slotana; wins are used for buyback and burn.",
+  flywheel: "Creator fees route to a subwallet that distributes SOL to randomly selected current holders."
 };
 
 export type PumpCurveState = {

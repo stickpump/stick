@@ -48,6 +48,33 @@ that is easy for creators and funders to understand:
 There are no per-user Pump.fun buys. A 100-person raise becomes one aggregate
 route, then token allocation is distributed by settlement math.
 
+## Creator Fee Modes
+
+Creator fees are chosen once during launch creation. `Self` is the default:
+Pump fee-sharing sends 100% of creator fees to the creator wallet. Automated
+modes route 100% of fee-sharing to a platform-created subwallet:
+
+- `Buyback + Burn` - claim creator fees, buy the launched token, then burn the
+  bought token delta.
+- `Coinflip` - claim creator fees, flip through Slotana, and use winning payout
+  for buyback + burn. Losses are logged publicly.
+- `Flywheel` - claim creator fees and distribute spendable SOL to 10 random
+  current holders.
+
+Non-self modes are off-chain worker actions backed by public signatures. The
+presale page shows the selected mode, fee recipient/subwallet public key, and
+action history. Subwallet secrets are stored encrypted in Postgres with
+`WALLET_ENCRYPTION_KEY`.
+
+Every non-self subwallet keeps a fixed gas reserve:
+
+```text
+action_budget = max(subwallet_balance - 0.05 SOL, 0)
+```
+
+The worker never uses the reserve as action budget. If spendable balance is
+below the mode threshold, the worker records/skips the cycle.
+
 Internal flow:
 
 ```text
@@ -148,7 +175,9 @@ The keeper is an operational service, not a custodian. It:
 - builds official Pump.fun SDK `create_v2` and `buy_v2` instructions;
 - builds official PumpSwap SDK remainder buys;
 - builds ordered Jito bundles for split Pump/PumpSwap routes;
-- updates launched-token and activity tables for the web app.
+- updates launched-token and activity tables for the web app;
+- runs creator-fee subwallet cycles for completed non-self launches while
+  preserving the fixed gas reserve.
 
 For split routes, the intended production behavior is bundle retry. A normal
 sequential fallback would leave an avoidable gap between Pump graduation and the
@@ -180,6 +209,10 @@ Core tables:
 - `route_steps` - Pump/PumpSwap finalize progress.
 - `launched_tokens` - post-launch token cards.
 - `activity_events` - ticker and audit feed events.
+- `creator_fee_wallets` - encrypted non-self creator-fee subwallets and
+  one-time `0.05 SOL` reserve funding state.
+- `creator_fee_cycles` - public action logs for fee claims, buyback burns,
+  coinflips, flywheel distributions, signatures, recipients, and errors.
 
 Apply schema:
 
@@ -223,6 +256,7 @@ Important variables:
 | `NEXT_PUBLIC_LAUNCHPAD_PROGRAM_ID` | web | Deployed launchpad program id. |
 | `NEXT_PUBLIC_PRIVY_APP_ID` | web | Privy app id for wallet login. |
 | `DATABASE_URL` | web, keeper | Postgres connection string. |
+| `WALLET_ENCRYPTION_KEY` | web, keeper | Required for encrypted creator-fee subwallet storage and worker decrypt. |
 | `METADATA_UPLOAD_URL` | web, keeper | Pump.fun metadata upload endpoint. |
 | `SPONSORED_TX_ENABLED` | web API | Enables server-side fee payer signing. |
 | `SPONSOR_KEYPAIR_JSON` | web API | Low-balance sponsor wallet secret JSON. Never commit. |
@@ -230,6 +264,8 @@ Important variables:
 | `LAUNCHPAD_PROGRAM_ID` | keeper | Same deployed program id. |
 | `KEEPER_PRIVATE_KEY` / `KEEPER_KEYPAIR_JSON` | keeper | Keeper wallet. Never commit. |
 | `JITO_ENDPOINT` | keeper | Comma-separated Jito block engine endpoints. |
+| `CREATOR_FEE_WORKER_MS` | keeper | Creator-fee worker cadence. Defaults to `30000`. |
+| `DISABLE_CREATOR_FEE_WORKER` | keeper | Set `true` to disable fee-action cycles. |
 | `JITO_TIP_LAMPORTS` | keeper | Tip used for bundles. |
 | `DISABLE_AUTO_FINALIZE` | keeper | Set `true` to index/settle without route finalization. |
 

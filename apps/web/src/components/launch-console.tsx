@@ -37,6 +37,8 @@ import {
   quoteMintForAsset
 } from "@fair/launchpad-client";
 import {
+  CREATOR_FEE_MODE_DESCRIPTIONS,
+  CREATOR_FEE_MODE_LABELS,
   SOL_DECIMALS,
   calculateDevbuyWeight,
   calculatePumpCurveCompletion,
@@ -45,6 +47,7 @@ import {
   quoteDecimals,
   quoteFinalizePlan,
   toBaseUnits,
+  type CreatorFeeMode,
   type ProjectMetadata
 } from "@fair/shared";
 import { FutardHeader } from "@/components/futard-header";
@@ -100,6 +103,13 @@ const wizardSteps = [
     title: "Publish",
     eyebrow: "Mainnet"
   }
+];
+
+const creatorFeeModes: Array<{ mode: CreatorFeeMode; eyebrow: string }> = [
+  { mode: "self", eyebrow: "Direct payout" },
+  { mode: "buyback_burn", eyebrow: "Claim, buy, burn" },
+  { mode: "coinflip", eyebrow: "Slotana flip" },
+  { mode: "flywheel", eyebrow: "Holder rewards" }
 ];
 
 const durationMarks = [
@@ -301,6 +311,7 @@ export function LaunchConsole() {
   const [creatorBuyIn, setCreatorBuyIn] = useState(DEFAULT_CREATOR_BUY_IN);
   const [maxWalletCapEnabled, setMaxWalletCapEnabled] = useState(true);
   const [maxWalletSupplyPercent, setMaxWalletSupplyPercent] = useState("3");
+  const [creatorFeeMode, setCreatorFeeMode] = useState<CreatorFeeMode>("self");
   const [vestingEnabled, setVestingEnabled] = useState(true);
   const [initialUnlockPercent, setInitialUnlockPercent] = useState("0");
   const [cliffSeconds, setCliffSeconds] = useState("86400");
@@ -385,6 +396,7 @@ export function LaunchConsole() {
     { label: "Target configured", done: targetRaiseUnits.gt(new BN(0)) },
     { label: "Creator buy-in set", done: devbuyUnits.gte(minDevbuyUnits) },
     { label: "Max wallet cap reviewed", done: true },
+    { label: "Creator fees selected", done: Boolean(creatorFeeMode) },
     { label: "Vesting reviewed", done: true },
     { label: "Settlement route visible", done: true }
   ];
@@ -577,6 +589,7 @@ export function LaunchConsole() {
           devbuyLamports: devbuyUnits.toString(),
           devbuyWeight: devbuyWeight.toString(),
           maxWalletSupplyBps,
+          creatorFeeMode,
           startAt: new Date().toISOString(),
           endAt: new Date(Date.now() + launchDurationSeconds * 1000).toISOString()
         })
@@ -951,6 +964,32 @@ export function LaunchConsole() {
                       <LockKeyhole size={17} />
                       <span>{vestingEnabled ? `Current schedule: ${initialUnlockPercent || "0"}% upfront, ${formatDuration(Number(cliffSeconds))} cliff, ${formatDuration(Number(linearSeconds))} linear unlock.` : "Vesting is off: creator allocation is available after settlement."}</span>
                     </div>
+                    <div className="createSectionHeader feeModeHeader">
+                      <div>
+                        <h3>Creator fees</h3>
+                        <p>Choose where Pump fee-sharing revenue goes after the token launches.</p>
+                      </div>
+                    </div>
+                    <div className="creatorFeeModeGrid">
+                      {creatorFeeModes.map((option) => (
+                        <button
+                          className={creatorFeeMode === option.mode ? "creatorFeeModeCard active" : "creatorFeeModeCard"}
+                          key={option.mode}
+                          onClick={() => setCreatorFeeMode(option.mode)}
+                          type="button"
+                        >
+                          <span>{option.eyebrow}</span>
+                          <strong>{CREATOR_FEE_MODE_LABELS[option.mode]}</strong>
+                          <small>{CREATOR_FEE_MODE_DESCRIPTIONS[option.mode]}</small>
+                        </button>
+                      ))}
+                    </div>
+                    {creatorFeeMode !== "self" && (
+                      <div className="createNotice">
+                        <ShieldCheck size={17} />
+                        <span>Stick creates an encrypted subwallet, routes 100% of creator fees to it, funds a 0.05 SOL gas reserve once, and publishes every worker action.</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1040,6 +1079,7 @@ export function LaunchConsole() {
                     <div><span>Window</span><strong>{formatDuration(durationSeconds)}</strong></div>
                     <div><span>Target</span><strong>{formatAmount(targetRaiseUnits, decimals)} SOL</strong></div>
                     <div><span>Creator buy-in</span><strong>{formatAmount(devbuyUnits, decimals)} SOL</strong></div>
+                    <div><span>Creator fees</span><strong>{CREATOR_FEE_MODE_LABELS[creatorFeeMode]}</strong></div>
                     <div><span>Max wallet</span><strong>{maxWalletCapEnabled ? `${maxWalletSupplyPercent}% supply` : "Off"}</strong></div>
                     <div><span>Est. FDV</span><strong>{formatUsd(estimatedMarketCapUsd)}</strong></div>
                   </div>
@@ -1056,6 +1096,7 @@ export function LaunchConsole() {
                   <div><span>SOL price</span><strong>{formatUsd(solUsdPrice)}</strong></div>
                   <div><span>Total target</span><strong>{formatAmount(targetRaiseUnits, decimals)} SOL</strong></div>
                   <div><span>Creator buy-in</span><strong>{formatAmount(devbuyUnits, decimals)} SOL</strong></div>
+                  <div><span>Creator fees</span><strong>{CREATOR_FEE_MODE_LABELS[creatorFeeMode]}</strong></div>
                   <div><span>Max wallet</span><strong>{maxWalletCapEnabled ? `${maxWalletSupplyPercent}% supply` : "Off"}</strong></div>
                   <div><span>Launch spend</span><strong>{estimatedRouteSol.toFixed(2)} SOL</strong></div>
                   <div><span>Est. FDV</span><strong>{formatUsd(estimatedMarketCapUsd)}</strong></div>
