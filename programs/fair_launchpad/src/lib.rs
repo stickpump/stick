@@ -1142,7 +1142,7 @@ pub struct ClaimRefund<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
     /// CHECK: contributor receives lamports; checked by contributor_state.owner.
-    #[account(mut, address = owner.key())]
+    #[account(mut, address = contributor_state.owner)]
     pub contributor: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
