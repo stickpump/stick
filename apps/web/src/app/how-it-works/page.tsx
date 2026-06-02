@@ -82,8 +82,8 @@ const routeCases = [
   ["Bundle not landed", "Retry bundle", "The keeper retries the atomic route instead of intentionally leaving a normal transaction gap."]
 ];
 
-const PROGRAM_ID = "7JTYzCAXQjEU1n18SKKn9JuGQ5AgReqFoW2yhmkeRiPJ";
-const KEEPER_ADDRESS = "8cNyWiryjmgXfH5EeBHoXdaCngmPhmeKqASCDoEXHN9b";
+const PROGRAM_ID = "3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL";
+const KEEPER_ADDRESS = "ExSmZtVRQQjyFQzA1JteTm3nyVqQgADoSru9aHWs2DHx";
 const FLOW_DIAGRAM = `Creator wallet
 + create page + buy-in
 +-------------------------+

@@ -12,7 +12,7 @@ use anchor_spl::{
     token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
-declare_id!("7JTYzCAXQjEU1n18SKKn9JuGQ5AgReqFoW2yhmkeRiPJ");
+declare_id!("3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL");
 
 const BASIS_POINTS: u16 = 10_000;
 const BASE_WEIGHT_BPS: u128 = 20_000;

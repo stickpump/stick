@@ -20,7 +20,7 @@ import bs58 from "bs58";
 import { Buffer } from "buffer";
 import type { BoostPreset, LaunchType, QuoteAsset, RewardPreset, VestingPreset } from "@fair/shared";
 
-export const DEFAULT_PROGRAM_ID = new PublicKey("7JTYzCAXQjEU1n18SKKn9JuGQ5AgReqFoW2yhmkeRiPJ");
+export const DEFAULT_PROGRAM_ID = new PublicKey("3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL");
 export const MAINNET_USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 export const DEVNET_USDC_MINT = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 

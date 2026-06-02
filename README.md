@@ -6,8 +6,8 @@ oversubscription refunds, and one aggregate Pump.fun/PumpSwap launch route.
 
 Current mainnet deployment:
 
-- Smart contract: [`7JTYzCAXQjEU1n18SKKn9JuGQ5AgReqFoW2yhmkeRiPJ`](https://solscan.io/account/7JTYzCAXQjEU1n18SKKn9JuGQ5AgReqFoW2yhmkeRiPJ)
-- Keeper / sponsor: [`8cNyWiryjmgXfH5EeBHoXdaCngmPhmeKqASCDoEXHN9b`](https://solscan.io/account/8cNyWiryjmgXfH5EeBHoXdaCngmPhmeKqASCDoEXHN9b)
+- Smart contract: [`3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL`](https://solscan.io/account/3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL)
+- Keeper / sponsor: [`ExSmZtVRQQjyFQzA1JteTm3nyVqQgADoSru9aHWs2DHx`](https://solscan.io/account/ExSmZtVRQQjyFQzA1JteTm3nyVqQgADoSru9aHWs2DHx)
 
 The project is structured as a production-oriented monorepo:
 

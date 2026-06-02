@@ -61,7 +61,7 @@ import {
   type SettlementManifest
 } from "@fair/shared";
 
-const DEFAULT_PROGRAM_ID = "7JTYzCAXQjEU1n18SKKn9JuGQ5AgReqFoW2yhmkeRiPJ";
+const DEFAULT_PROGRAM_ID = "3cp7EpueLdu5RM5sPGLdnE8smPdWAkco3aMwAihju7VL";
 const PUMP_FEE_RECIPIENT = new PublicKey("62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV");
 const PUMP_BUYBACK_FEE_RECIPIENT = new PublicKey("5YxQFdt3Tr9zJLvkFccqXVUwhdTWJQc1fFg2YPbxvxeD");
 const ROUTE_SOL_RENT_BUFFER_LAMPORTS = new BN(3_000_000);
